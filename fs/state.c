@@ -266,13 +266,16 @@ void inode_delete(int inumber) {
     // simulate storage access delay (to inode and freeinode_ts)
     insert_delay();
     insert_delay();
+
     ALWAYS_ASSERT(valid_inumber(inumber), "inode_delete: invalid inumber");
 
     ALWAYS_ASSERT(freeinode_ts[inumber] == TAKEN,
                   "inode_delete: inode already freed");
+
     if (inode_table[inumber].i_size > 0) {
         data_block_free(inode_table[inumber].i_data_block);
     }
+
     freeinode_ts[inumber] = FREE;
     pthread_rwlock_unlock(&inode_table_lock);
 }

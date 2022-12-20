@@ -160,11 +160,11 @@ int main() {
     tfs_close(tfs_open("/f4", TFS_O_CREAT));
     tfs_close(tfs_open("/f5", TFS_O_CREAT));
 
-    pthread_t tid[4];
-    for (int i = 0; i < 4; i++){
+    pthread_t tid[20];
+    for (int i = 0; i < 20; i++){
         pthread_create(&tid[i], NULL, functions[rand()%5], NULL);
     }
-    for (int i = 0; i < 4; i++){
+    for (int i = 0; i < 20; i++){
         pthread_join(tid[i], NULL);
     }
     char buffer[100];

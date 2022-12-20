@@ -8,8 +8,6 @@
 
 #include "betterassert.h"
 
-pthread_rwlock_t rw_lock;
-
 tfs_params tfs_default_params() {
     tfs_params params = {
         .max_inode_count = 64,
@@ -37,7 +35,7 @@ int tfs_init(tfs_params const *params_ptr) {
     if (root != ROOT_DIR_INUM) {
         return -1;
     }
-    pthread_rwlock_init(&rw_lock, NULL);
+
     return 0;
 }
 
@@ -127,6 +125,7 @@ int tfs_open(char const *name, tfs_file_mode_t mode) {
             inode_delete(inum);
             return -1; // no space in directory
         }
+
         offset = 0;
     } else {
         return -1;
@@ -143,28 +142,22 @@ int tfs_open(char const *name, tfs_file_mode_t mode) {
 
 int tfs_sym_link(char const *target, char const *link_name) {
     inode_t *root_inode = inode_get(ROOT_DIR_INUM);
-    pthread_rwlock_wrlock(&rw_lock);
     if (tfs_lookup(link_name, root_inode) != -1 ) { // link_name is already in the directory
-        pthread_rwlock_unlock(&rw_lock); 
         return -1;
     }
     int inumber = inode_create(T_SOFTLINK);
-    if (inumber == -1) {// error creating new inode
-        pthread_rwlock_unlock(&rw_lock); 
+    if (inumber == -1) { // error creating new inode
         return -1;
     }
     if (add_dir_entry(root_inode, link_name+1, inumber) == -1) { // error adding link to directory
         inode_delete(inumber);
-        pthread_rwlock_unlock(&rw_lock);
         return -1;
     }
     int link_file = add_to_open_file_table(inumber, 0);
     if (tfs_write(link_file, target, strlen(target)+1) < 0) { // writes target's path in the link's data
-        pthread_rwlock_unlock(&rw_lock);
         return -1;
     }
     tfs_close(link_file);
-    pthread_rwlock_unlock(&rw_lock);
     return 0;
 }
 
@@ -175,20 +168,15 @@ int tfs_link(char const *target, char const *link_name) {
     int inumber = tfs_lookup(target, root_inode);
     if (inumber == -1) // target file doesn't exist
         return -1;
-    pthread_rwlock_rdlock(&rw_lock);
     inode_t *target_inode = inode_get(inumber);
-    if (pthread_rwlock_wrlock(&target_inode->rw) != 0){
-        pthread_rwlock_unlock(&rw_lock);
+    if (pthread_mutex_lock(&target_inode->mutex) != 0)
         return -1;
-    }
     if (target_inode->i_node_type == T_SOFTLINK || add_dir_entry(root_inode, link_name + 1, inumber) == -1) { // can't create hard links to soft links
-        pthread_rwlock_unlock(&target_inode->rw);
-        pthread_rwlock_unlock(&rw_lock);
+        pthread_mutex_unlock(&target_inode->mutex);
         return -1; // no space in root directory
     }
     target_inode->link_number += 1; // inode has one more link
-    pthread_rwlock_unlock(&target_inode->rw);
-    pthread_rwlock_unlock(&rw_lock);
+    pthread_mutex_unlock(&target_inode->mutex);
     return 0;
 }
 
@@ -206,7 +194,7 @@ ssize_t tfs_write(int fhandle, void const *buffer, size_t to_write) {
     if (file == NULL) 
         return -1;
     inode_t *inode = inode_get(file->of_inumber);
-    if (pthread_rwlock_wrlock(&inode->rw) != 0) {
+    if (pthread_mutex_lock(&inode->mutex) != 0) {
         return -1;
     }
 
@@ -223,7 +211,7 @@ ssize_t tfs_write(int fhandle, void const *buffer, size_t to_write) {
             // If empty file, allocate new block
             int bnum = data_block_alloc();
             if (bnum == -1) {
-                pthread_rwlock_unlock(&inode->rw);
+                pthread_mutex_unlock(&inode->mutex);
                 return -1; // no space
             }
 
@@ -242,7 +230,7 @@ ssize_t tfs_write(int fhandle, void const *buffer, size_t to_write) {
             inode->i_size = file->of_offset;
         }
     }
-    pthread_rwlock_unlock(&inode->rw);
+    pthread_mutex_unlock(&inode->mutex);
     return (ssize_t)to_write;
 }
 
@@ -251,10 +239,8 @@ ssize_t tfs_read(int fhandle, void *buffer, size_t len) {
     if (file == NULL) {
         return -1;
     }
-    pthread_rwlock_rdlock(&rw_lock);
     inode_t *inode = inode_get(file->of_inumber);
     if (pthread_rwlock_rdlock(&inode->rw) != 0) {
-        pthread_rwlock_unlock(&rw_lock);
         return -1;
     }
     ALWAYS_ASSERT(inode != NULL, "tfs_read: inode of open file deleted");
@@ -275,7 +261,6 @@ ssize_t tfs_read(int fhandle, void *buffer, size_t len) {
         file->of_offset += to_read;
     }
     pthread_rwlock_unlock(&inode->rw);
-    pthread_rwlock_unlock(&rw_lock);
     return (ssize_t)to_read;
 }
 
@@ -284,19 +269,15 @@ int tfs_unlink(char const *target) {
     int inumber = tfs_lookup(target, root_inode);
     if (inumber == -1) // file doesn't exist in root directory
         return -1;
-    pthread_rwlock_rdlock(&rw_lock);
     inode_t *target_inode = inode_get(inumber);
-    if (pthread_rwlock_wrlock(&target_inode->rw) != 0){
-        pthread_rwlock_unlock(&rw_lock);
+    if (pthread_mutex_lock(&target_inode->mutex) != 0)
         return -1;
-    }
     if (target_inode->link_number == 1) // the inode has no more links
         inode_delete(inumber);
     else 
         target_inode->link_number -= 1;
     clear_dir_entry(root_inode, target+1);
-    pthread_rwlock_unlock(&target_inode->rw);
-    pthread_rwlock_unlock(&rw_lock);
+    pthread_mutex_unlock(&target_inode->mutex);
     return 0;
 }
 
@@ -315,8 +296,7 @@ int tfs_copy_from_external_fs(char const *source_path, char const *dest_path) {
     ssize_t written = tfs_write(tfs_file, buffer, read);
     int source_close = fclose(source);
     int tfs_file_close = tfs_close(tfs_file);
-    if (written < 0 || source_close == -1 || tfs_file_close == -1){// error writing or closing the files
+    if (written < 0 || source_close == -1 || tfs_file_close == -1) // error writing or closing the files
         return -1;
-    } 
     return 0;
 }
