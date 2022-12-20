@@ -213,7 +213,6 @@ int inode_create(inode_type i_type) {
 
     inode->i_node_type = i_type;
     inode->link_number = 1;
-    pthread_rwlock_init(&inode->rw, NULL);
     pthread_mutex_init(&inode->mutex, NULL);
     switch (i_type) {
     case T_DIRECTORY: {
