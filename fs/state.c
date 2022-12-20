@@ -28,7 +28,6 @@ static allocation_state_t *free_blocks;
 static open_file_entry_t *open_file_table;
 static allocation_state_t *free_open_file_entries;
 
-
 pthread_rwlock_t inode_table_lock;
 pthread_rwlock_t data_lock;
 pthread_rwlock_t open_file_lock;

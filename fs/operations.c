@@ -272,8 +272,12 @@ int tfs_unlink(char const *target) {
     inode_t *target_inode = inode_get(inumber);
     if (pthread_mutex_lock(&target_inode->mutex) != 0)
         return -1;
-    if (target_inode->link_number == 1) // the inode has no more links
+    if (target_inode->link_number == 1){// the inode has no more links
+        pthread_mutex_unlock(&target_inode->mutex);
         inode_delete(inumber);
+        clear_dir_entry(root_inode, target+1);
+        return 0;
+    } 
     else 
         target_inode->link_number -= 1;
     clear_dir_entry(root_inode, target+1);
