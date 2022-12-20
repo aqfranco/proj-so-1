@@ -37,6 +37,7 @@ int tfs_init(tfs_params const *params_ptr) {
     if (root != ROOT_DIR_INUM) {
         return -1;
     }
+    pthread_rwlock_init(&rw_lock, NULL);
     return 0;
 }
 
