@@ -28,7 +28,6 @@ typedef struct {
     int link_number;
     size_t i_size;
     int i_data_block;
-    pthread_rwlock_t rw;
     pthread_mutex_t mutex;
 } inode_t;
 
