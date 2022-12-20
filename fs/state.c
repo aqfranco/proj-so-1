@@ -28,9 +28,9 @@ static allocation_state_t *free_blocks;
 static open_file_entry_t *open_file_table;
 static allocation_state_t *free_open_file_entries;
 
-pthread_rwlock_t inode_table_lock;
-pthread_rwlock_t data_lock;
-pthread_rwlock_t open_file_lock;
+pthread_rwlock_t inode_table_lock; // lock that protects the inode table
+pthread_rwlock_t data_lock; // lock that protects the data blocks
+pthread_rwlock_t open_file_lock; // lock that protects the open file table
 
 // Convenience macros
 #define INODE_TABLE_SIZE (fs_params.max_inode_count)
